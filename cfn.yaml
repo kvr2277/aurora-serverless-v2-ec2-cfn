@@ -1,0 +1,115 @@
+Parameters:
+  KeyPairName:
+    Type: String
+    Description: Name of an existing EC2 KeyPair to enable SSH access to the instance
+  YourIPAddress:
+    Type: String
+    Description: Your IP Address
+  DbMasterUsername:
+    Description: The datbaase master user name
+    Type: String
+    Default: root
+  DbMasterPassword:
+    Description: The database master password
+    Type: String
+    Default: Hello123$
+    NoEcho: true
+  PublicSubnetId1:
+    Description: PublicSubnetId1
+    Type: String
+  PrivateSubnetId1:
+    Description: PrivateSubnetId1
+    Type: String
+  PrivateSubnetId2:
+    Description: PrivateSubnetId2
+    Type: String
+  AMIId:
+    Description: AMIId
+    Type: String
+  DBEngineVersion:
+    Description: DBEngineVersion
+    Type: String
+
+Resources:
+  EC2Instance:
+    Type: "AWS::EC2::Instance"
+    Properties:
+      ImageId: !Ref AMIId # Tricky. Amazon Linux 2 AMI (HVM) - Kernel 5.10, SSD Volume Type
+      InstanceType: "t2.micro"
+      SecurityGroups:
+        - !Ref EC2SecurityGroup
+      KeyName: !Ref KeyPairName
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash -ex
+          sudo yum update -y
+          sudo yum install -y mysql
+
+  EC2SecurityGroup:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupDescription: "SSH access from your IP address"
+      SecurityGroupIngress:
+        - IpProtocol: "tcp"
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref YourIPAddress
+
+
+  AuroraDBSecurityGroup:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupDescription: "SSH access from your IP address"
+      SecurityGroupIngress:
+        - IpProtocol: "tcp"
+          FromPort: 3306
+          ToPort: 3306
+          SourceSecurityGroupId: !GetAtt EC2SecurityGroup.GroupId
+
+
+  ServerlessDBCluster:
+    Type: 'AWS::RDS::DBCluster'
+    DeletionPolicy: Delete
+    Properties:
+      Engine: aurora-mysql
+      DBClusterIdentifier: 'serverless-cluster'
+      DatabaseName: university
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      EngineVersion: !Ref DBEngineVersion
+      MasterUsername: !Ref DbMasterUsername
+      MasterUserPassword: !Ref DbMasterPassword
+      ServerlessV2ScalingConfiguration:
+        MinCapacity: 0.5
+        MaxCapacity: 4
+      VpcSecurityGroupIds:
+        - !GetAtt AuroraDBSecurityGroup.GroupId
+
+
+  ServerlessDBInstance:
+    Type: 'AWS::RDS::DBInstance'
+    Properties:
+      Engine: aurora-mysql
+      DBInstanceClass: db.serverless
+      DBClusterIdentifier: !Ref ServerlessDBCluster
+
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Subnet group for Aurora MySQL
+      SubnetIds:
+        - !Ref PrivateSubnetId1
+        - !Ref PrivateSubnetId2
+
+
+Outputs:
+  ServerlessDBClusterEndpoint:
+    Description: ServerlessDBCluster Endpoint
+    Value: !GetAtt ServerlessDBCluster.Endpoint.Address
+
+  ServerlessDBInstanceEndpoint:
+    Description: ServerlessDB Instance Endpoint
+    Value: !GetAtt ServerlessDBInstance.Endpoint.Address
+
+  EC2InstancePublicIP:
+    Description: Public IP address of the newly created EC2 instance.
+    Value: !GetAtt EC2Instance.PublicIp

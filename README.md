@@ -1,2 +1,3 @@
 # aurora-serverless-v2-ec2-cfn
-Creating Aurora Serverless V2 and connecting via EC2 - all using Cloud Formation
+
+Cloudformation stack to create a simple Aurora Serverless V2 and connect to the database from EC2 instance
